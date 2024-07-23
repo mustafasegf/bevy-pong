@@ -1,13 +1,24 @@
 use bevy::prelude::*;
+use bevy::window::WindowResolution;
 use rand::Rng;
 
 const BALL_WIDTH: f32 = 25.;
 const PADDLE_WIDTH: f32 = 10.;
 const PADDLE_HEIGHT: f32 = 150.;
 
+const WINDOW_WIDTH: f32 = 1280.;
+const WINDOW_HEIGHT: f32 = 720.;
+
 fn main() {
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins);
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(Window {
+            resolution: WindowResolution::new(WINDOW_WIDTH, WINDOW_HEIGHT),
+            resizable: false,
+            ..Default::default()
+        }),
+        ..Default::default()
+    }));
     app.add_systems(Startup, (spawn_camera, spawn_players, spawn_ball));
     app.add_systems(Update, (move_paddle, move_ball, ball_collide));
     app.run();
@@ -24,18 +35,9 @@ struct Paddle {
 }
 
 fn spawn_players(mut commands: Commands) {
-    commands.spawn(SpriteBundle {
-        sprite: Sprite {
-            color: Color::BLACK,
-            custom_size: Some(Vec2::new(700., 500.)),
-            ..Default::default()
-        },
-        ..Default::default()
-    });
-
     commands.spawn((
         SpriteBundle {
-            transform: Transform::from_translation(Vec3::new(-300., 0., 0.)),
+            transform: Transform::from_translation(Vec3::new(-WINDOW_WIDTH / 2. + 20., 0., 0.)),
             sprite: Sprite {
                 color: Color::WHITE,
                 custom_size: Some(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
@@ -51,7 +53,7 @@ fn spawn_players(mut commands: Commands) {
 
     commands.spawn((
         SpriteBundle {
-            transform: Transform::from_translation(Vec3::new(300., 0., 0.)),
+            transform: Transform::from_translation(Vec3::new(WINDOW_WIDTH / 2. - 20., 0., 0.)),
             sprite: Sprite {
                 color: Color::WHITE,
                 custom_size: Some(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
@@ -74,12 +76,18 @@ fn move_paddle(
     for (mut pos, settings) in &mut paddles {
         if input.pressed(settings.move_up) {
             pos.translation.y += 200. * time.delta_seconds();
-            pos.translation.y = pos.translation.y.clamp(-250. + 75., 250. - 75.);
+            pos.translation.y = pos
+                .translation
+                .y
+                .clamp(-WINDOW_HEIGHT / 2. + 75., WINDOW_HEIGHT / 2. - 75.);
         }
 
         if input.pressed(settings.move_down) {
             pos.translation.y -= 200. * time.delta_seconds();
-            pos.translation.y = pos.translation.y.clamp(-250. + 75., 250. - 75.);
+            pos.translation.y = pos
+                .translation
+                .y
+                .clamp(-WINDOW_HEIGHT / 2. + 75., WINDOW_HEIGHT / 2. - 75.);
         }
     }
 }
@@ -123,7 +131,7 @@ fn ball_collide(
                 && ball.translation.y + BALL_WIDTH / 2. > paddle.translation.y - PADDLE_HEIGHT / 2.
             {
                 velocity.0 *= -1.;
-                velocity.0.y = rand::thread_rng().gen::<f32>() * 100.;
+                velocity.0.y = rand::thread_rng().gen_range(-1.0..1.0) * 100.;
             }
         }
     }
