@@ -1,4 +1,3 @@
-use bevy::math::VectorSpace;
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 use bevy_rapier2d::prelude::*;
@@ -30,11 +29,14 @@ fn main() {
     #[cfg(debug_assertions)]
     app.add_plugins(RapierDebugRenderPlugin::default());
 
+    app.add_event::<GameEvents>();
+
     app.add_systems(
         Startup,
         (spawn_camera, spawn_players, spawn_ball, spawn_border),
     );
-    app.add_systems(Update, (move_paddle,));
+    app.add_systems(Update, (move_paddle, detect_reset));
+    app.add_systems(PostUpdate, (reset_ball,));
 
     app.run();
 }
@@ -49,10 +51,20 @@ struct Paddle {
     move_down: KeyCode,
 }
 
-#[derive(Component)]
+#[derive(Component, Debug, Clone, Copy)]
 enum Player {
     Player1,
     Player2,
+}
+
+impl Player {
+    fn start_speed(&self) -> Velocity {
+        let rand_y = rand::thread_rng().gen_range(-200.0..200.0);
+        match self {
+            Player::Player1 => Velocity::linear(Vec2::new(350., rand_y)),
+            Player::Player2 => Velocity::linear(Vec2::new(-350., rand_y)),
+        }
+    }
 }
 
 fn spawn_border(mut commands: Commands) {
@@ -63,6 +75,8 @@ fn spawn_border(mut commands: Commands) {
         },
         RigidBody::Fixed,
         Collider::cuboid(WINDOW_WIDTH / 2., 3.),
+        // ColliderMassProperties::Density(0.0),
+        // Friction::coefficient(0.0),
     ));
     commands.spawn((
         SpatialBundle {
@@ -71,6 +85,8 @@ fn spawn_border(mut commands: Commands) {
         },
         RigidBody::Fixed,
         Collider::cuboid(WINDOW_WIDTH / 2., 3.),
+        // ColliderMassProperties::Density(0.0),
+        // Friction::coefficient(0.0),
     ));
 
     commands.spawn((
@@ -141,7 +157,7 @@ fn move_paddle(
 ) {
     for (mut pos, settings) in &mut paddles {
         if input.pressed(settings.move_up) {
-            pos.translation.y += 200. * time.delta_seconds();
+            pos.translation.y += 350. * time.delta_seconds();
             pos.translation.y = pos
                 .translation
                 .y
@@ -149,7 +165,7 @@ fn move_paddle(
         }
 
         if input.pressed(settings.move_down) {
-            pos.translation.y -= 200. * time.delta_seconds();
+            pos.translation.y -= 350. * time.delta_seconds();
             pos.translation.y = pos
                 .translation
                 .y
@@ -174,6 +190,8 @@ fn spawn_ball(mut commands: Commands) {
         },
         Ball,
         RigidBody::Dynamic,
+        CollidingEntities::default(),
+        ActiveEvents::COLLISION_EVENTS,
         Collider::ball(BALL_RADIUS),
         Velocity::linear(Vec2::new(-350., 0.)),
         Restitution {
@@ -182,4 +200,49 @@ fn spawn_ball(mut commands: Commands) {
         },
         // LockedAxes::ROTATION_LOCKED,
     ));
+}
+
+fn detect_reset(
+    input: Res<ButtonInput<KeyCode>>,
+    balls: Query<&CollidingEntities, With<Ball>>,
+    goles: Query<&Player, With<Sensor>>,
+    mut game_events: EventWriter<GameEvents>,
+) {
+    if input.just_pressed(KeyCode::Space) {
+        let player = if rand::thread_rng().gen::<bool>() {
+            Player::Player1
+        } else {
+            Player::Player2
+        };
+        game_events.send(GameEvents::ResetBall(player));
+        return;
+    }
+    for ball in &balls {
+        for hit in ball.iter() {
+            if let Ok(player) = goles.get(hit) {
+                game_events.send(GameEvents::ResetBall(*player));
+            }
+        }
+    }
+}
+
+#[derive(Event)]
+enum GameEvents {
+    ResetBall(Player),
+}
+
+fn reset_ball(
+    mut balls: Query<(&mut Transform, &mut Velocity), With<Ball>>,
+    mut game_events: EventReader<GameEvents>,
+) {
+    for events in game_events.read() {
+        match events {
+            GameEvents::ResetBall(player) => {
+                for (mut ball, mut speed) in &mut balls {
+                    ball.translation = Vec3::ZERO;
+                    *speed = player.start_speed();
+                }
+            }
+        }
+    }
 }
